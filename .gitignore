@@ -1,0 +1,15 @@
+.env
+.env.*
+*token*
+*secret*
+*credentials*
+
+*.tif
+*.tiff
+
+__pycache__/
+*.pyc
+
+.vscode/
+.DS_Store
+Thumbs.db

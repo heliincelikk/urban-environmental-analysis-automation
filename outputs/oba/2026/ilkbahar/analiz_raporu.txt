@@ -1,0 +1,46 @@
+======================================================================
+OBA MAHALLESİ 2026 İLKBAHAR ÇEVRESEL MARUZİYET RAPORU
+======================================================================
+
+1. NÜFUS VE ANALİZ GRIDİ
+----------------------------------------------------------------------
+Oba Mahallesi için analizde kullanılan kalibre edilmiş toplam nüfus yaklaşık 32,496 kişidir.
+Nüfus bulunan toplam 1,201 adet yaklaşık 100 m çözünürlüklü grid hücresi analiz edilmiştir.
+Nüfus bulunan gridlerde ortalama 27.06 kişi/grid, medyan ise 7.16 kişi/grid'dir.
+
+2. YEŞİLLİK MARUZİYETİ — NDVI
+----------------------------------------------------------------------
+İlkbahar döneminde nüfus bulunan gridlerin ağırlıksız ortalama NDVI değeri 0.3925'tür.
+Nüfus-ağırlıklı NDVI değeri ise 0.2266'tür.
+Nüfus-ağırlıklı değerin daha düşük olması, nüfusun daha az yeşil gridlerde yoğunlaşma eğilimi gösterdiğini belirtmektedir.
+
+- Düşük yeşillik maruziyeti (NDVI < 0.20): yaklaşık 17,683 kişi (%54.42)
+- Düşük-orta yeşillik maruziyeti (0.20–0.30): yaklaşık 8,263 kişi (%25.43)
+- Orta yeşillik maruziyeti (0.30–0.50): yaklaşık 4,652 kişi (%14.32)
+- Yüksek yeşillik maruziyeti (NDVI ≥ 0.50): yaklaşık 1,898 kişi (%5.84)
+
+Yüksek nüfus yoğunluğuna sahip ve NDVI < 0.20 olan 88 gridde yaklaşık 9,720 kişi yaşamaktadır. Bu değer analiz edilen nüfusun %29.91'sine karşılık gelmektedir.
+
+3. TERMAL YÜK — LANDSAT LST
+----------------------------------------------------------------------
+İlkbahar döneminde nüfus bulunan gridlerde ağırlıksız ortalama arazi yüzey sıcaklığı 29.57 °C'dir.
+Nüfus-ağırlıklı arazi yüzey sıcaklığı ise 31.68 °C'dir.
+Nüfus-ağırlıklı sıcaklık, ağırlıksız değerden +2.12 °C farklıdır.
+Bu sonuç, nüfusun göreli olarak daha sıcak yüzey sıcaklığına sahip gridlerde yoğunlaştığını göstermektedir.
+
+Yerel termal dağılım eşikleri: medyan 29.45 °C, %75 eşiği 31.29 °C ve %90 eşiği 32.40 °C'dir.
+
+- Göreli olarak daha düşük termal yük (< medyan): yaklaşık 2,944 kişi (%9.06)
+- Orta termal yük (medyan–%75): yaklaşık 7,081 kişi (%21.79)
+- Yüksek termal yük (%75–%90): yaklaşık 11,819 kişi (%36.37)
+- En yüksek termal yük dilimi (≥ %90): yaklaşık 10,652 kişi (%32.78)
+
+Yüksek nüfus yoğunluğu ile yerel LST dağılımının en sıcak %10'luk diliminin kesiştiği 59 gridde yaklaşık 6,536 kişi yaşamaktadır. Bu değer toplam nüfusun %20.11'sidir.
+
+4. YÖNTEMSEL NOT
+----------------------------------------------------------------------
+NDVI sonuçları yeşil alanın doğrudan kullanımını veya kamusal erişilebilirliğini değil, nüfusun yaşadığı gridlerdeki bitkisel yeşillik maruziyetini temsil eder.
+LST değerleri hava sıcaklığı değil, Landsat 8/9 Collection 2 Level-2 verisinden elde edilen arazi yüzey sıcaklığıdır.
+NDVI < 0.20 ve %90 LST eşikleri bu aşamada pilot/göreli sınıflandırmalardır; sağlık veya evrensel risk eşikleri olarak yorumlanmamalıdır.
+Yeşillik ve termal yük birbirinden bağımsız çevresel bileşenler olarak raporlanmıştır.
+======================================================================
