@@ -6,6 +6,9 @@
 
 *.tif
 *.tiff
+outputs/
+
+data/boundaries/mahmutlar_belediye_sinir_DUZELTILMIS.geojson
 
 __pycache__/
 *.pyc
@@ -13,3 +16,6 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
+# Eski / yerel sınır ve kontrol dosyaları
+data/boundaries/mahmutlar_pilot_sinir.geojson
+mahmutlar_sinir_kontrol.html

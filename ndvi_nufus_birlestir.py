@@ -9,20 +9,19 @@ from rasterio.warp import reproject, Resampling
 # ============================================================
 
 population_file = (
-    "outputs/oba/2026/"
+    "outputs/mahmutlar/2026/"
     "population_100m_calibrated.tif"
 )
 
 ndvi_file = (
-    "outputs/oba/2026/ilkbahar/"
+    "outputs/mahmutlar/2026/yaz/"
     "ndvi_median.tif"
 )
 
 output_file = (
-    "outputs/oba/2026/ilkbahar/"
+    "outputs/mahmutlar/2026/yaz/"
     "ndvi_100m.tif"
 )
-
 
 # ============================================================
 # NÜFUS GRIDİNİ OKU
@@ -76,18 +75,29 @@ with rasterio.open(ndvi_file) as ndvi_src:
                 ndvi == ndvi_src.nodata
             ] = np.nan
 
-    # Fiziksel NDVI sınırı
+
+    # --------------------------------------------------------
+    # NDVI VERİ KALİTE KONTROLÜ
+    # Fiziksel NDVI aralığı: -1 ile +1
+    # --------------------------------------------------------
+
     ndvi[
-        (ndvi < -1)
+        (ndvi < -1.0)
         |
-        (ndvi > 1)
+        (ndvi > 1.0)
     ] = np.nan
+
 
     ndvi_100m = np.full(
         (pop_height, pop_width),
         np.nan,
         dtype="float32"
     )
+
+
+    # --------------------------------------------------------
+    # Sentinel-2 NDVI'yı WorldPop 100 m gridine getir
+    # --------------------------------------------------------
 
     reproject(
         source=ndvi,
@@ -99,6 +109,8 @@ with rasterio.open(ndvi_file) as ndvi_src:
         dst_transform=pop_transform,
         dst_crs=pop_crs,
 
+        # NDVI sürekli değişken olduğu için
+        # 100 m hücre içindeki ortalama kullanılıyor.
         resampling=Resampling.average,
 
         src_nodata=np.nan,
@@ -120,23 +132,32 @@ valid = (
     &
     np.isfinite(ndvi_100m)
     &
-    (ndvi_100m >= -1)
+    (ndvi_100m >= -1.0)
     &
-    (ndvi_100m <= 1)
+    (ndvi_100m <= 1.0)
 )
+
 
 pop_valid = population[valid]
 ndvi_valid = ndvi_100m[valid]
+
+
+if len(pop_valid) == 0:
+    raise ValueError(
+        "Nüfus ve NDVI arasında geçerli eşleşme bulunamadı."
+    )
 
 
 print("\n==============================")
 print("NÜFUS + NDVI EŞLEŞMESİ")
 print("==============================")
 
+
 print(
     "Eşleşen nüfuslu grid:",
     len(pop_valid)
 )
+
 
 print(
     "Eşleşen toplam nüfus:",
@@ -163,11 +184,18 @@ unweighted_ndvi = float(
 # ============================================================
 
 weighted_ndvi = float(
+
     np.sum(
-        pop_valid * ndvi_valid
+        pop_valid
+        *
+        ndvi_valid
     )
+
     /
-    np.sum(pop_valid)
+
+    np.sum(
+        pop_valid
+    )
 )
 
 
@@ -182,6 +210,7 @@ print("\n==============================")
 print("NÜFUS-AĞIRLIKLI YEŞİLLİK")
 print("==============================")
 
+
 print(
     "Ağırlıksız ortalama NDVI:",
     round(
@@ -190,6 +219,7 @@ print(
     )
 )
 
+
 print(
     "Nüfus-ağırlıklı NDVI:",
     round(
@@ -197,6 +227,7 @@ print(
         4
     )
 )
+
 
 print(
     "Fark:",
@@ -220,6 +251,7 @@ classes = [
 
     (
         "0.20 - 0.30",
+
         (
             (ndvi_valid >= 0.20)
             &
@@ -229,6 +261,7 @@ classes = [
 
     (
         "0.30 - 0.50",
+
         (
             (ndvi_valid >= 0.30)
             &
@@ -244,7 +277,9 @@ classes = [
 
 
 total_population = float(
-    np.sum(pop_valid)
+    np.sum(
+        pop_valid
+    )
 )
 
 
@@ -257,7 +292,9 @@ for name, class_mask in classes:
 
     class_population = float(
         np.sum(
-            pop_valid[class_mask]
+            pop_valid[
+                class_mask
+            ]
         )
     )
 
@@ -272,14 +309,22 @@ for name, class_mask in classes:
     print(
         name,
         ":",
-        round(class_population),
+        round(
+            class_population
+        ),
         f"kişi (%{ratio:.2f})"
     )
 
 
 # ============================================================
-# PİLOT KRİTİK ALAN
-# YÜKSEK NÜFUS + DÜŞÜK NDVI
+# PİLOT KRİTİK YEŞİLLİK ALANLARI
+#
+# Tanım:
+# - Nüfus yoğunluğu en yüksek %10'luk hücreler
+# - NDVI < 0.20
+#
+# Bu eşikler pilot / tanımlayıcıdır.
+# Evrensel sağlık eşiği değildir.
 # ============================================================
 
 population_threshold = float(
@@ -289,24 +334,69 @@ population_threshold = float(
     )
 )
 
+
+low_ndvi_threshold = 0.20
+
+
 critical = (
+
     valid
+
     &
-    (population >= population_threshold)
+
+    (
+        population
+        >=
+        population_threshold
+    )
+
     &
-    (ndvi_100m < 0.20)
+
+    np.isfinite(
+        ndvi_100m
+    )
+
+    &
+
+    (
+        ndvi_100m
+        >=
+        -1.0
+    )
+
+    &
+
+    (
+        ndvi_100m
+        <=
+        1.0
+    )
+
+    &
+
+    (
+        ndvi_100m
+        <
+        low_ndvi_threshold
+    )
 )
 
 
 critical_cells = int(
-    np.sum(critical)
+    np.sum(
+        critical
+    )
 )
+
 
 critical_population = float(
     np.sum(
-        population[critical]
+        population[
+            critical
+        ]
     )
 )
+
 
 critical_ratio = (
     critical_population
@@ -321,6 +411,7 @@ print("\n==============================")
 print("PİLOT KRİTİK YEŞİLLİK ALANLARI")
 print("==============================")
 
+
 print(
     "Yüksek nüfus eşiği (%90):",
     round(
@@ -330,15 +421,18 @@ print(
     "kişi/grid"
 )
 
+
 print(
     "Düşük NDVI pilot eşiği:",
-    "0.20"
+    low_ndvi_threshold
 )
+
 
 print(
     "Kritik grid sayısı:",
     critical_cells
 )
+
 
 print(
     "Kritik gridlerdeki nüfus:",
@@ -347,10 +441,76 @@ print(
     )
 )
 
+
 print(
     "Toplam nüfus içindeki oran:",
     f"%{critical_ratio:.2f}"
 )
+
+
+# ============================================================
+# EK KONTROL
+# ============================================================
+
+population_total = float(
+    np.sum(
+        population[
+            population > 0
+        ]
+    )
+)
+
+
+missing_population = (
+    population_total
+    -
+    total_population
+)
+
+
+print("\n==============================")
+print("VERİ KAPSAMA KONTROLÜ")
+print("==============================")
+
+
+print(
+    "Mahalle toplam nüfusu:",
+    round(
+        population_total,
+        2
+    )
+)
+
+
+print(
+    "NDVI ile eşleşen nüfus:",
+    round(
+        total_population,
+        2
+    )
+)
+
+
+print(
+    "NDVI verisi olmayan nüfus:",
+    round(
+        missing_population,
+        2
+    )
+)
+
+
+if abs(missing_population) < 1:
+
+    print(
+        "[OK] Mahalle nüfusunun tamamı NDVI ile eşleşti."
+    )
+
+else:
+
+    print(
+        "[UYARI] Bazı nüfus hücrelerinde NDVI verisi bulunmuyor."
+    )
 
 
 # ============================================================
@@ -364,11 +524,32 @@ profile.update({
 })
 
 
+# Sadece nüfus ile geçerli şekilde eşleşen
+# NDVI değerlerini çıktı rasterına yazıyoruz.
+
+output_array = np.full(
+    ndvi_100m.shape,
+    np.nan,
+    dtype="float32"
+)
+
+
+output_array[
+    valid
+] = ndvi_100m[
+    valid
+]
+
+
 save_array = np.where(
-    np.isfinite(ndvi_100m),
-    ndvi_100m,
+    np.isfinite(
+        output_array
+    ),
+    output_array,
     -9999.0
-).astype("float32")
+).astype(
+    "float32"
+)
 
 
 with rasterio.open(
@@ -386,6 +567,7 @@ with rasterio.open(
 print("\n==============================")
 print("KAYDEDİLDİ")
 print("==============================")
+
 
 print(
     output_file

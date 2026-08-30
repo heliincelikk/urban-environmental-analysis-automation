@@ -9,17 +9,18 @@ from rasterio.warp import reproject, Resampling
 # ============================================================
 
 population_file = (
-    "outputs/oba/2026/"
+    "outputs/mahmutlar/2026/"
     "population_100m_calibrated.tif"
 )
 
+
 lst_file = (
-    "outputs/oba/2026/ilkbahar/"
+    "outputs/mahmutlar/2026/yaz/"
     "lst_median.tif"
 )
 
 output_file = (
-    "outputs/oba/2026/ilkbahar/"
+    "outputs/mahmutlar/2026/yaz/"
     "lst_100m.tif"
 )
 
@@ -74,7 +75,11 @@ with rasterio.open(lst_file) as lst_src:
             lst == lst_src.nodata
         ] = np.nan
 
-    # Mantık kontrolü
+
+    # --------------------------------------------------------
+    # LST veri kalite kontrolü
+    # --------------------------------------------------------
+
     lst[
         (lst < -20)
         |
@@ -88,6 +93,10 @@ with rasterio.open(lst_file) as lst_src:
         dtype="float32"
     )
 
+
+    # --------------------------------------------------------
+    # Landsat LST'yi WorldPop 100 m gridine getir
+    # --------------------------------------------------------
 
     reproject(
         source=lst,
@@ -119,6 +128,10 @@ valid = (
     (population > 0)
     &
     np.isfinite(lst_100m)
+    &
+    (lst_100m >= -20)
+    &
+    (lst_100m <= 70)
 )
 
 
@@ -131,6 +144,12 @@ lst_valid = lst_100m[
 ]
 
 
+if len(pop_valid) == 0:
+    raise ValueError(
+        "Nüfus ve LST arasında geçerli eşleşme bulunamadı."
+    )
+
+
 print("\n==============================")
 print("NÜFUS + LST EŞLEŞMESİ")
 print("==============================")
@@ -140,6 +159,7 @@ print(
     "Eşleşen nüfuslu grid:",
     len(pop_valid)
 )
+
 
 print(
     "Eşleşen toplam nüfus:",
@@ -201,6 +221,7 @@ print(
     "°C"
 )
 
+
 print(
     "Nüfus-ağırlıklı LST:",
     round(
@@ -209,6 +230,7 @@ print(
     ),
     "°C"
 )
+
 
 print(
     "Fark:",
@@ -221,7 +243,7 @@ print(
 
 
 # ============================================================
-# TERMAL SINIFLAR
+# TERMAL SINIF EŞİKLERİ
 # ============================================================
 
 median_threshold = float(
@@ -260,6 +282,7 @@ print(
     "°C"
 )
 
+
 print(
     "%75:",
     round(
@@ -268,6 +291,7 @@ print(
     ),
     "°C"
 )
+
 
 print(
     "%90:",
@@ -356,8 +380,14 @@ for name, class_mask in thermal_classes:
 
 
 # ============================================================
-# PİLOT KRİTİK ALAN
-# YÜKSEK NÜFUS + YÜKSEK LST
+# PİLOT KRİTİK TERMAL ALAN
+#
+# Tanım:
+# - Nüfus yoğunluğu en yüksek %10'luk hücreler
+# - LST değeri en yüksek %10'luk hücreler
+#
+# Bu eşikler mahalle içi göreli/pilot eşiklerdir.
+# Sağlık eşiği değildir.
 # ============================================================
 
 population_threshold = float(
@@ -372,6 +402,8 @@ critical = (
     valid
     &
     (population >= population_threshold)
+    &
+    np.isfinite(lst_100m)
     &
     (lst_100m >= p90_threshold)
 )
@@ -416,6 +448,7 @@ print(
     "kişi/grid"
 )
 
+
 print(
     "Yüksek LST eşiği (%90):",
     round(
@@ -425,10 +458,12 @@ print(
     "°C"
 )
 
+
 print(
     "Kritik grid sayısı:",
     critical_cells
 )
+
 
 print(
     "Kritik gridlerdeki nüfus:",
@@ -437,10 +472,76 @@ print(
     )
 )
 
+
 print(
     "Toplam nüfus içindeki oran:",
     f"%{critical_ratio:.2f}"
 )
+
+
+# ============================================================
+# VERİ KAPSAMA KONTROLÜ
+# ============================================================
+
+population_total = float(
+    np.sum(
+        population[
+            population > 0
+        ]
+    )
+)
+
+
+missing_population = (
+    population_total
+    -
+    total_population
+)
+
+
+print("\n==============================")
+print("VERİ KAPSAMA KONTROLÜ")
+print("==============================")
+
+
+print(
+    "Mahalle toplam nüfusu:",
+    round(
+        population_total,
+        2
+    )
+)
+
+
+print(
+    "LST ile eşleşen nüfus:",
+    round(
+        total_population,
+        2
+    )
+)
+
+
+print(
+    "LST verisi olmayan nüfus:",
+    round(
+        missing_population,
+        2
+    )
+)
+
+
+if abs(missing_population) < 1:
+
+    print(
+        "[OK] Mahalle nüfusunun tamamı LST ile eşleşti."
+    )
+
+else:
+
+    print(
+        "[UYARI] Bazı nüfus hücrelerinde LST verisi bulunmuyor."
+    )
 
 
 # ============================================================
@@ -454,11 +555,25 @@ profile.update({
 })
 
 
+output_array = np.full(
+    lst_100m.shape,
+    np.nan,
+    dtype="float32"
+)
+
+
+output_array[
+    valid
+] = lst_100m[
+    valid
+]
+
+
 save_array = np.where(
     np.isfinite(
-        lst_100m
+        output_array
     ),
-    lst_100m,
+    output_array,
     -9999.0
 ).astype(
     "float32"

@@ -1,49 +1,42 @@
-import json
 import rasterio
 import numpy as np
+import json
 
 from rasterio.mask import mask
 from rasterio.warp import transform_geom
 
 
-# ============================================================
-# DOSYALAR
-# ============================================================
-
-ndvi_file = "outputs/oba/2026/ilkbahar/ndvi_median.tif"
-
-boundary_file = (
-    "data/boundaries/"
-    "oba_pilot_sinir.geojson"
-)
+ndvi_file = "outputs/mahmutlar/2026/ilkbahar/ndvi_median.tif"
+boundary_file = "data/boundaries/mahmutlar_pilot_sinir.geojson"
 
 
 # ============================================================
-# SINIRI OKU
+# MAHALLE SINIRINI OKU
 # ============================================================
 
-with open(
-    boundary_file,
-    "r",
-    encoding="utf-8"
-) as f:
-
+with open(boundary_file, "r", encoding="utf-8") as f:
     geojson = json.load(f)
 
 
 if geojson["type"] == "FeatureCollection":
-
-    geometry = (
-        geojson["features"][0]["geometry"]
-    )
+    geometries = [
+        feature["geometry"]
+        for feature in geojson["features"]
+    ]
 
 elif geojson["type"] == "Feature":
-
-    geometry = geojson["geometry"]
+    geometries = [
+        geojson["geometry"]
+    ]
 
 else:
+    geometries = [
+        geojson
+    ]
 
-    geometry = geojson
+
+# GeoJSON standart olarak EPSG:4326 kabul edilir.
+boundary_crs = "EPSG:4326"
 
 
 # ============================================================
@@ -56,181 +49,112 @@ with rasterio.open(ndvi_file) as src:
     print("NDVI RASTER BİLGİSİ")
     print("==============================")
 
-    print(
-        "CRS:",
-        src.crs
-    )
+    print("CRS:", src.crs)
+    print("Boyut:", src.width, "x", src.height)
+    print("Bounds:", src.bounds)
+    print("Nodata:", src.nodata)
 
-    print(
-        "Boyut:",
-        src.width,
-        "x",
-        src.height
-    )
-
-    print(
-        "Bounds:",
-        src.bounds
-    )
-
-    print(
-        "Nodata:",
-        src.nodata
-    )
 
     # --------------------------------------------------------
-    # OBA SINIRINI RASTER CRS'İNE ÇEVİR
+    # MAHALLE SINIRINI RASTER CRS'İNE DÖNÜŞTÜR
     # --------------------------------------------------------
 
-    geometry_projected = transform_geom(
-        "EPSG:4326",
-        src.crs,
-        geometry,
-        precision=6
-    )
+    transformed_geometries = []
+
+    for geometry in geometries:
+
+        transformed = transform_geom(
+            boundary_crs,
+            src.crs,
+            geometry
+        )
+
+        transformed_geometries.append(
+            transformed
+        )
+
+
+    print("\n[OK] Mahalle sınırı raster CRS'ine dönüştürüldü.")
+
 
     # --------------------------------------------------------
-    # RASTERI GERÇEK OBA POLİGONUNA KIRP
+    # MAHALLE SINIRINA GÖRE KIRP
     # --------------------------------------------------------
 
     clipped, transform = mask(
         src,
-        [geometry_projected],
-        crop=True,
-        filled=False
+        transformed_geometries,
+        crop=True
     )
 
-    ndvi = (
-        clipped[0]
-        .astype("float32")
+
+    ndvi = clipped[0].astype(
+        "float32"
     )
-
-    # Maskeli alanları NaN yap
-    if np.ma.isMaskedArray(ndvi):
-
-        ndvi = ndvi.filled(
-            np.nan
-        )
-
-    if src.nodata is not None:
-
-        if np.isnan(src.nodata):
-
-            pass
-
-        else:
-
-            ndvi[
-                ndvi == src.nodata
-            ] = np.nan
 
 
 # ============================================================
-# FİZİKSEL NDVI KONTROLÜ
+# GEÇERLİ NDVI DEĞERLERİ
 # ============================================================
-
-ndvi[
-    (ndvi < -1)
-    |
-    (ndvi > 1)
-] = np.nan
-
-
 valid = ndvi[
     np.isfinite(ndvi)
+    & (ndvi >= -1.0)
+    & (ndvi <= 1.0)
 ]
 
-
-if len(valid) == 0:
-
+if valid.size == 0:
     raise ValueError(
-        "Oba sınırı içinde geçerli "
-        "NDVI pikseli bulunamadı."
+        "Mahmutlar sınırı içinde geçerli NDVI verisi bulunamadı."
     )
 
 
 # ============================================================
-# SONUÇLAR
+# TEMEL İSTATİSTİKLER
 # ============================================================
 
 print("\n==============================")
-print("OBA SINIRI İÇİN NDVI")
+print("MAHMUTLAR SINIRI İÇİN NDVI")
 print("==============================")
+
 
 print(
     "Geçerli piksel sayısı:",
-    len(valid)
+    valid.size
 )
 
 print(
     "Ortalama NDVI:",
-    round(
-        float(np.mean(valid)),
-        4
-    )
+    round(float(np.mean(valid)), 4)
 )
 
 print(
     "Medyan NDVI:",
-    round(
-        float(np.median(valid)),
-        4
-    )
+    round(float(np.median(valid)), 4)
 )
 
 print(
     "Minimum:",
-    round(
-        float(np.min(valid)),
-        4
-    )
+    round(float(np.min(valid)), 4)
 )
 
 print(
     "Maksimum:",
-    round(
-        float(np.max(valid)),
-        4
-    )
+    round(float(np.max(valid)), 4)
 )
 
 print(
     "%25:",
-    round(
-        float(
-            np.percentile(
-                valid,
-                25
-            )
-        ),
-        4
-    )
+    round(float(np.percentile(valid, 25)), 4)
 )
 
 print(
     "%75:",
-    round(
-        float(
-            np.percentile(
-                valid,
-                75
-            )
-        ),
-        4
-    )
+    round(float(np.percentile(valid, 75)), 4)
 )
 
 print(
     "%90:",
-    round(
-        float(
-            np.percentile(
-                valid,
-                90
-            )
-        ),
-        4
-    )
+    round(float(np.percentile(valid, 90)), 4)
 )
 
 
@@ -238,65 +162,58 @@ print(
 # NDVI SINIFLARI
 # ============================================================
 
+n1 = np.sum(
+    valid < 0.20
+)
+
+n2 = np.sum(
+    (valid >= 0.20)
+    &
+    (valid < 0.30)
+)
+
+n3 = np.sum(
+    (valid >= 0.30)
+    &
+    (valid < 0.50)
+)
+
+n4 = np.sum(
+    valid >= 0.50
+)
+
+
+total = valid.size
+
+
 print("\n==============================")
 print("NDVI SINIF DAĞILIMI")
 print("==============================")
 
 
-classes = [
+print(
+    f"NDVI < 0.20 : "
+    f"{n1} piksel "
+    f"(%{n1 / total * 100:.2f})"
+)
 
-    (
-        "NDVI < 0.20",
-        valid < 0.20
-    ),
+print(
+    f"0.20 - 0.30 : "
+    f"{n2} piksel "
+    f"(%{n2 / total * 100:.2f})"
+)
 
-    (
-        "0.20 - 0.30",
-        (
-            (valid >= 0.20)
-            &
-            (valid < 0.30)
-        )
-    ),
+print(
+    f"0.30 - 0.50 : "
+    f"{n3} piksel "
+    f"(%{n3 / total * 100:.2f})"
+)
 
-    (
-        "0.30 - 0.50",
-        (
-            (valid >= 0.30)
-            &
-            (valid < 0.50)
-        )
-    ),
-
-    (
-        "NDVI >= 0.50",
-        valid >= 0.50
-    )
-]
-
-
-for name, class_mask in classes:
-
-    count = int(
-        np.sum(
-            class_mask
-        )
-    )
-
-    ratio = (
-        count
-        /
-        len(valid)
-        *
-        100
-    )
-
-    print(
-        name,
-        ":",
-        count,
-        f"piksel (%{ratio:.2f})"
-    )
+print(
+    f"NDVI >= 0.50 : "
+    f"{n4} piksel "
+    f"(%{n4 / total * 100:.2f})"
+)
 
 
 print("\n==============================")
