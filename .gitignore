@@ -19,3 +19,11 @@ Thumbs.db
 # Eski / yerel sınır ve kontrol dosyaları
 data/boundaries/mahmutlar_pilot_sinir.geojson
 mahmutlar_sinir_kontrol.html
+# Generated analysis outputs
+outputs/
+
+# Alanya Belediyesi KEOS geometry - local only
+data/boundaries/mahmutlar_belediye_sinir_DUZELTILMIS.geojson
+
+# Temporary boundary check
+mahmutlar_sinir_kontrol.html
