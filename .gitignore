@@ -27,3 +27,13 @@ data/boundaries/mahmutlar_belediye_sinir_DUZELTILMIS.geojson
 
 # Temporary boundary check
 mahmutlar_sinir_kontrol.html
+# Secrets
+.env
+.env.*
+
+# PM10 raw data
+data/pm10/raw/
+
+# Python cache
+__pycache__/
+*.pyc
