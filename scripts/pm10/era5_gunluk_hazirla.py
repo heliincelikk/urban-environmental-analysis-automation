@@ -32,12 +32,12 @@ output_file = (
     / "data"
     / "pm10"
     / "processed"
-    / "era5_istasyon_gunluk_test.csv"
+    / "era5_istasyon_gunluk_2024_2025.csv"
 )
 
 
 # =========================================================
-# 1. ERA5 DOSYALARINI AÇ
+# 1. ERA5 DOSYALARINI HAZIRLA
 # =========================================================
 
 buffer_file = (
@@ -45,25 +45,93 @@ buffer_file = (
     / "era5_land_antalya_2023_12_31_buffer.nc"
 )
 
-january_file = (
-    era5_dir
-    / "era5_land_antalya_2024_01.nc"
+monthly_files = []
+
+for year in [2024, 2025]:
+
+    for month in range(1, 13):
+
+        file_path = (
+            era5_dir
+            / f"era5_land_antalya_{year}_{month:02d}.nc"
+        )
+
+        monthly_files.append(
+            file_path
+        )
+
+
+# =========================================================
+# 2. DOSYALARIN VARLIĞINI KONTROL ET
+# =========================================================
+
+all_files = [
+    buffer_file,
+    *monthly_files
+]
+
+missing_files = [
+    file
+    for file in all_files
+    if not file.exists()
+]
+
+if missing_files:
+
+    print("\nEksik ERA5 dosyalari:")
+
+    for file in missing_files:
+        print(file)
+
+    raise FileNotFoundError(
+        "Tum ERA5 dosyalari bulunamadi."
+    )
+
+
+print("\nERA5 dosya sayisi:")
+print(len(monthly_files))
+
+print(
+    "24 aylik dosya bulundu."
 )
 
-ds_buffer = xr.open_dataset(buffer_file)
-
-ds_january = xr.open_dataset(january_file)
-
 
 # =========================================================
-# 2. ZAMAN EKSENİNDE BİRLEŞTİR
+# 3. ERA5 DOSYALARINI AÇ VE BİRLEŞTİR
 # =========================================================
+
+datasets = []
+
+
+print("\nDosyalar aciliyor...")
+
+
+ds_buffer = xr.open_dataset(
+    buffer_file
+)
+
+datasets.append(
+    ds_buffer
+)
+
+
+for file_path in monthly_files:
+
+    print(
+        file_path.name
+    )
+
+    ds_month = xr.open_dataset(
+        file_path
+    )
+
+    datasets.append(
+        ds_month
+    )
+
 
 ds = xr.concat(
-    [
-        ds_buffer,
-        ds_january
-    ],
+    datasets,
     dim="valid_time"
 )
 
@@ -73,14 +141,41 @@ ds = ds.sortby(
 
 
 # =========================================================
-# 3. UTC VE TÜRKİYE YEREL SAATİ
+# 4. DUPLICATE ZAMAN KONTROLÜ
 # =========================================================
 
-utc_time = pd.to_datetime(
+time_index = pd.to_datetime(
     ds["valid_time"].values
 )
 
-# Türkiye = UTC+3
+duplicate_time_count = (
+    pd.Index(time_index)
+    .duplicated()
+    .sum()
+)
+
+print(
+    "\nDuplicate UTC zaman sayisi:"
+)
+
+print(
+    duplicate_time_count
+)
+
+
+if duplicate_time_count > 0:
+
+    raise ValueError(
+        "ERA5 zaman ekseninde duplicate kayit bulundu."
+    )
+
+
+# =========================================================
+# 5. UTC VE TÜRKİYE YEREL SAATİ
+# =========================================================
+
+utc_time = time_index
+
 local_time = (
     utc_time
     + pd.to_timedelta(
@@ -91,40 +186,68 @@ local_time = (
 
 
 # =========================================================
-# 4. DOĞRULANMIŞ İSTASYON-GRID EŞLEŞMESİNİ OKU
+# 6. İSTASYON-GRID EŞLEŞMESİNİ OKU
 # =========================================================
 
 mapping = pd.read_csv(
     mapping_file
 )
 
+
+print(
+    "\nIstasyon sayisi:"
+)
+
+print(
+    len(mapping)
+)
+
+
+if len(mapping) != 8:
+
+    raise ValueError(
+        "Beklenen istasyon sayisi 8."
+    )
+
+
 all_station_data = []
 
 
 # =========================================================
-# 5. HER İSTASYON İÇİN METEOROLOJİ VERİSİNİ HAZIRLA
+# 7. HER İSTASYON İÇİN METEOROLOJİYİ HAZIRLA
 # =========================================================
 
 for _, row in mapping.iterrows():
 
-    station_name = row["istasyon"]
+    station_name = row[
+        "istasyon"
+    ]
 
     era5_lat = float(
-        row["era5_enlem"]
+        row[
+            "era5_enlem"
+        ]
     )
 
     era5_lon = float(
-        row["era5_boylam"]
+        row[
+            "era5_boylam"
+        ]
+    )
+
+
+    print(
+        f"\nIsleniyor: {station_name}"
     )
 
 
     # -----------------------------------------------------
-    # Daha önce doğruladığımız ERA5 grid hücresini seçiyoruz.
+    # Daha önce doğrulanmış ERA5 grid koordinatını seçiyoruz.
     #
-    # Buradaki method="nearest",
-    # istasyon için yeniden nearest aramak amacıyla değil,
-    # NetCDF içindeki çok küçük floating-point farklarını
-    # çözmek amacıyla kullanılıyor.
+    # method="nearest" burada sadece floating-point
+    # koordinat farkını çözmek için kullanılıyor.
+    # tolerance=0.001, komşu 0.1 derece hücreye
+    # yanlışlıkla atlamayı engeller.
     # -----------------------------------------------------
 
     point = ds.sel(
@@ -136,10 +259,9 @@ for _, row in mapping.iterrows():
 
 
     # =====================================================
-    # 6. SICAKLIK VE ÇİY NOKTASI
+    # 8. SICAKLIK VE ÇİY NOKTASI
     # =====================================================
 
-    # Kelvin -> Celsius
     sicaklik_c = (
         point["t2m"].values
         - 273.15
@@ -152,10 +274,9 @@ for _, row in mapping.iterrows():
 
 
     # =====================================================
-    # 7. BAĞIL NEM
+    # 9. BAĞIL NEM
     # =====================================================
 
-    # Doygun buhar basıncı - sıcaklık
     es_t = (
         6.1121
         * np.exp(
@@ -172,7 +293,6 @@ for _, row in mapping.iterrows():
     )
 
 
-    # Doygun buhar basıncı - çiy noktası
     es_td = (
         6.1121
         * np.exp(
@@ -189,7 +309,6 @@ for _, row in mapping.iterrows():
     )
 
 
-    # Bağıl nem (%)
     bagil_nem = (
         100
         * es_td
@@ -198,14 +317,9 @@ for _, row in mapping.iterrows():
 
 
     # =====================================================
-    # 8. RÜZGAR HIZI
+    # 10. RÜZGAR HIZI
     # =====================================================
 
-    # Önce her saatin gerçek rüzgar hızını hesaplıyoruz.
-    #
-    # speed = sqrt(u^2 + v^2)
-    #
-    # Daha sonra günlük ortalaması alınacak.
     ruzgar_hizi = np.sqrt(
         point["u10"].values ** 2
         + point["v10"].values ** 2
@@ -213,7 +327,7 @@ for _, row in mapping.iterrows():
 
 
     # =====================================================
-    # 9. SAATLİK METEOROLOJİ TABLOSU
+    # 11. SAATLİK TABLO
     # =====================================================
 
     hourly = pd.DataFrame({
@@ -230,8 +344,6 @@ for _, row in mapping.iterrows():
         "bagil_nem_yuzde":
             bagil_nem,
 
-        # Surface pressure
-        # Pascal -> hPa
         "basinc_hpa":
             point["sp"].values
             / 100,
@@ -248,16 +360,18 @@ for _, row in mapping.iterrows():
     })
 
 
-    # Türkiye yerel tarihini oluştur
-    hourly["tarih"] = (
-        hourly["local_time"]
+    hourly[
+        "tarih"
+    ] = (
+        hourly[
+            "local_time"
+        ]
         .dt.date
     )
 
 
     # =====================================================
-    # 10. SICAKLIK / NEM / BASINÇ / RÜZGAR
-    #     GÜNLÜK ÖZETİ
+    # 12. GÜNLÜK ORTALAMALAR
     # =====================================================
 
     daily = (
@@ -308,41 +422,70 @@ for _, row in mapping.iterrows():
 
 
     # =====================================================
-    # 11. SADECE TAM 24 SAATLİK YEREL GÜNLERİ TUT
+    # 13. YALNIZCA 2024-2025 GÜNLERİNİ TUT
     # =====================================================
 
+    daily[
+        "tarih"
+    ] = pd.to_datetime(
+        daily[
+            "tarih"
+        ]
+    )
+
+
     daily = daily[
-        daily["saat_sayisi"] == 24
+        (
+            daily["tarih"]
+            >= pd.Timestamp(
+                "2024-01-01"
+            )
+        )
+        &
+        (
+            daily["tarih"]
+            <= pd.Timestamp(
+                "2025-12-31"
+            )
+        )
     ].copy()
 
 
     # =====================================================
-    # 12. GÜNLÜK YAĞIŞ HESABI
+    # 14. TAM 24 SAATLİK GÜNLERİ KONTROL ET
     # =====================================================
 
-    # ERA5-Land total precipitation (tp)
-    # birikimli bir değişkendir.
-    #
-    # Türkiye UTC+3 olduğu için:
-    #
-    # Yerel gün:
-    # 00:00 -> 24:00
-    #
-    # UTC karşılığı:
-    # önceki gün 21 UTC -> mevcut gün 21 UTC
-    #
-    # Formül:
-    #
-    # [tp(D 00) - tp(D-1 21)]
-    # +
-    # tp(D 21)
-    #
-    # tp birimi metre olduğu için
-    # sonuç x1000 ile mm'ye çevrilir.
+    incomplete_days = daily[
+        daily[
+            "saat_sayisi"
+        ] != 24
+    ]
 
+
+    if len(incomplete_days) > 0:
+
+        print(
+            f"\nUYARI - {station_name}: "
+            f"{len(incomplete_days)} eksik gun var."
+        )
+
+
+    # Yalnızca tam günler
+    daily = daily[
+        daily[
+            "saat_sayisi"
+        ] == 24
+    ].copy()
+
+
+    # =====================================================
+    # 15. GÜNLÜK YAĞIŞ
+    # =====================================================
 
     tp_series = pd.Series(
-        point["tp"].values,
+        point[
+            "tp"
+        ].values,
         index=utc_time
     ).sort_index()
 
@@ -350,14 +493,22 @@ for _, row in mapping.iterrows():
     precipitation_results = []
 
 
-    for local_date in daily["tarih"]:
+    for local_date in daily[
+        "tarih"
+    ]:
 
         day = pd.Timestamp(
             local_date
         )
 
 
-        # Önceki gün 21 UTC
+        # Yerel gün D:
+        #
+        # D-1 21 UTC
+        # ->
+        # D 21 UTC
+
+
         previous_21 = (
             day
             - pd.to_timedelta(
@@ -371,11 +522,11 @@ for _, row in mapping.iterrows():
         )
 
 
-        # Mevcut gün 00 UTC
-        current_00 = day
+        current_00 = (
+            day
+        )
 
 
-        # Mevcut gün 21 UTC
         current_21 = (
             day
             + pd.to_timedelta(
@@ -385,8 +536,6 @@ for _, row in mapping.iterrows():
         )
 
 
-        # Gerekli zamanlardan biri yoksa
-        # o gün için yağışı NaN bırak
         if (
             previous_21
             not in tp_series.index
@@ -409,11 +558,13 @@ for _, row in mapping.iterrows():
             ]
         )
 
+
         tp_current_00 = float(
             tp_series.loc[
                 current_00
             ]
         )
+
 
         tp_current_21 = float(
             tp_series.loc[
@@ -422,22 +573,21 @@ for _, row in mapping.iterrows():
         )
 
 
-        # Önceki UTC gününün
-        # 21 -> 24 aralığındaki yağışı
+        # Önceki UTC gün:
+        # 21 -> 24
         part_1 = (
             tp_current_00
             - tp_previous_21
         )
 
 
-        # Mevcut UTC gününün
-        # 00 -> 21 aralığındaki yağışı
+        # Mevcut UTC gün:
+        # 00 -> 21
         part_2 = (
             tp_current_21
         )
 
 
-        # Toplam yerel günlük yağış
         # metre -> mm
         precipitation_mm = (
             part_1
@@ -450,14 +600,20 @@ for _, row in mapping.iterrows():
         )
 
 
-    # Yağışı günlük tabloya ekle
-    daily["yagis_toplam_mm"] = (
+    daily[
+        "yagis_toplam_mm"
+    ] = (
         precipitation_results
     )
+    daily["yagis_toplam_mm"] = (
+    daily["yagis_toplam_mm"]
+    .clip(lower=0)
+)
 
 
-    # İstasyon adını ekle
-    daily["istasyon"] = (
+    daily[
+        "istasyon"
+    ] = (
         station_name
     )
 
@@ -468,7 +624,7 @@ for _, row in mapping.iterrows():
 
 
 # =========================================================
-# 13. TÜM İSTASYONLARI BİRLEŞTİR
+# 16. TÜM İSTASYONLARI BİRLEŞTİR
 # =========================================================
 
 result = pd.concat(
@@ -478,35 +634,54 @@ result = pd.concat(
 
 
 # =========================================================
-# 14. KOLON SIRASI
+# 17. TARİHİ STANDART HALE GETİR
+# =========================================================
+
+result[
+    "tarih"
+] = pd.to_datetime(
+    result[
+        "tarih"
+    ]
+)
+
+
+# =========================================================
+# 18. KOLON SIRASI
 # =========================================================
 
 result = result[
     [
         "tarih",
         "istasyon",
-
         "sicaklik_ort_c",
-
         "bagil_nem_ort_yuzde",
-
         "yagis_toplam_mm",
-
         "basinc_ort_hpa",
-
         "ruzgar_u_ort_ms",
-
         "ruzgar_v_ort_ms",
-
         "ruzgar_hizi_ort_ms",
-
         "saat_sayisi"
     ]
 ]
 
 
 # =========================================================
-# 15. KALİTE KONTROL
+# 19. SIRALA
+# =========================================================
+
+result = result.sort_values(
+    [
+        "istasyon",
+        "tarih"
+    ]
+).reset_index(
+    drop=True
+)
+
+
+# =========================================================
+# 20. KALİTE KONTROLLERİ
 # =========================================================
 
 print(
@@ -514,7 +689,7 @@ print(
 )
 
 print(
-    "ERA5 GUNLUK TEST"
+    "ERA5 2024-2025 GUNLUK"
 )
 
 print(
@@ -522,19 +697,15 @@ print(
 )
 
 
-# İlk 16 satır
-print(
-    result
-    .head(16)
-    .to_string(
-        index=False
-    )
-)
-
-
 # ---------------------------------------------------------
 # Satır sayısı
 # ---------------------------------------------------------
+
+expected_rows = (
+    731
+    * 8
+)
+
 
 print(
     "\nSatir sayisi:"
@@ -545,19 +716,75 @@ print(
 )
 
 
+print(
+    "\nBeklenen satir sayisi:"
+)
+
+print(
+    expected_rows
+)
+
+
 # ---------------------------------------------------------
-# Saat sayısı
+# İstasyon başına gün sayısı
 # ---------------------------------------------------------
 
 print(
-    "\nSaat sayisi dagilimi:"
+    "\nIstasyon basina gun sayisi:"
+)
+
+print(
+    result
+    .groupby(
+        "istasyon"
+    )
+    .size()
+)
+
+
+# ---------------------------------------------------------
+# Tarih aralığı
+# ---------------------------------------------------------
+
+print(
+    "\nTarih araligi:"
 )
 
 print(
     result[
-        "saat_sayisi"
-    ]
-    .value_counts()
+        "tarih"
+    ].min()
+)
+
+print(
+    result[
+        "tarih"
+    ].max()
+)
+
+
+# ---------------------------------------------------------
+# Duplicate istasyon + tarih kontrolü
+# ---------------------------------------------------------
+
+duplicate_rows = (
+    result
+    .duplicated(
+        subset=[
+            "istasyon",
+            "tarih"
+        ]
+    )
+    .sum()
+)
+
+
+print(
+    "\nDuplicate istasyon-tarih sayisi:"
+)
+
+print(
+    duplicate_rows
 )
 
 
@@ -577,102 +804,127 @@ print(
 
 
 # ---------------------------------------------------------
-# Bağıl nem kalite kontrolü
+# Saat kontrolü
 # ---------------------------------------------------------
 
 print(
-    "\nBagil nem araligi:"
+    "\nSaat sayisi dagilimi:"
 )
 
 print(
-    result
-    .groupby(
-        "istasyon"
-    )[
-        "bagil_nem_ort_yuzde"
+    result[
+        "saat_sayisi"
     ]
-    .agg(
-        [
-            "min",
-            "max",
-            "mean"
-        ]
-    )
+    .value_counts()
 )
 
 
 # ---------------------------------------------------------
-# Rüzgar hızı kalite kontrolü
+# Negatif yağış
 # ---------------------------------------------------------
 
-print(
-    "\nRuzgar hizi araligi:"
-)
-
-print(
-    result
-    .groupby(
-        "istasyon"
-    )[
-        "ruzgar_hizi_ort_ms"
-    ]
-    .agg(
-        [
-            "min",
-            "max",
-            "mean"
-        ]
-    )
-)
-
-
-# ---------------------------------------------------------
-# Yağış kalite kontrolü
-# ---------------------------------------------------------
-
-print(
-    "\nYagis araligi:"
-)
-
-print(
-    result
-    .groupby(
-        "istasyon"
-    )[
+negative_precip = (
+    result[
         "yagis_toplam_mm"
     ]
-    .agg(
-        [
-            "min",
-            "max",
-            "mean",
-            "sum"
-        ]
-    )
-)
+    < -0.001
+).sum()
 
-
-# ---------------------------------------------------------
-# Negatif yağış kontrolü
-# ---------------------------------------------------------
 
 print(
     "\nNegatif yagis sayisi:"
 )
 
 print(
-    (
-        result[
-            "yagis_toplam_mm"
+    negative_precip
+)
+
+
+# ---------------------------------------------------------
+# Bağıl nem fiziksel kontrol
+# ---------------------------------------------------------
+
+print(
+    "\nBagil nem min/max:"
+)
+
+print(
+    result[
+        "bagil_nem_ort_yuzde"
+    ].min()
+)
+
+print(
+    result[
+        "bagil_nem_ort_yuzde"
+    ].max()
+)
+
+
+# ---------------------------------------------------------
+# Meteoroloji genel özet
+# ---------------------------------------------------------
+
+print(
+    "\nMeteoroloji genel ozet:"
+)
+
+print(
+    result[
+        [
+            "sicaklik_ort_c",
+            "bagil_nem_ort_yuzde",
+            "yagis_toplam_mm",
+            "basinc_ort_hpa",
+            "ruzgar_hizi_ort_ms"
         ]
-        < -0.001
-    )
-    .sum()
+    ]
+    .describe()
 )
 
 
 # =========================================================
-# 16. CSV OLARAK KAYDET
+# 21. KRİTİK ASSERT KONTROLLERİ
+# =========================================================
+
+assert (
+    len(result)
+    == expected_rows
+), (
+    f"Satir sayisi beklenenden farkli: "
+    f"{len(result)} != {expected_rows}"
+)
+
+
+assert (
+    duplicate_rows
+    == 0
+), (
+    "Duplicate istasyon-tarih kaydi bulundu."
+)
+
+
+assert (
+    result
+    .isna()
+    .sum()
+    .sum()
+    == 0
+), (
+    "Meteoroloji tablosunda NaN bulundu."
+)
+
+
+assert (
+    negative_precip
+    == 0
+), (
+    "Negatif yagis bulundu."
+)
+
+
+# =========================================================
+# 22. CSV KAYDET
 # =========================================================
 
 result.to_csv(
@@ -682,9 +934,31 @@ result.to_csv(
 
 
 print(
+    "\n=============================="
+)
+
+print(
+    "BASARILI"
+)
+
+print(
+    "=============================="
+)
+
+
+print(
     "\nKaydedildi:"
 )
 
 print(
     output_file
+)
+
+
+print(
+    "\nToplam satir:"
+)
+
+print(
+    len(result)
 )
